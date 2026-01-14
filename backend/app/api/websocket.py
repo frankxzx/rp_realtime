@@ -136,16 +136,20 @@ async def websocket_conversation(websocket: WebSocket, session_id: str):
                 logger.info(f"Client disconnected from session {session_id}")
                 break
             except json.JSONDecodeError:
-                await websocket.send_json({
-                    "type": "error",
-                    "message": "Invalid JSON format"
-                })
+                # Only send error if connection is still active
+                if not websocket.client_state.disconnected:
+                    await websocket.send_json({
+                        "type": "error",
+                        "message": "Invalid JSON format"
+                    })
             except Exception as e:
                 logger.error(f"Error processing message: {str(e)}")
-                await websocket.send_json({
-                    "type": "error",
-                    "message": f"Internal error: {str(e)}"
-                })
+                # Only send error if connection is still active
+                if not websocket.client_state.disconnected:
+                    await websocket.send_json({
+                        "type": "error",
+                        "message": f"Internal error: {str(e)}"
+                    })
                 
     except Exception as e:
         logger.error(f"WebSocket error: {str(e)}")

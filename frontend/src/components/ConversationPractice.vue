@@ -174,17 +174,17 @@ export default {
       isStreaming.value = false
       
       // Create feedback object with the streaming response
+      // Note: WebSocket mode prioritizes speed - full feedback requires separate API calls
       const feedback = {
         ai_response: fullResponse,
         turn_number: turnNumber,
         user_input: userInput.value || 'User response (audio only)',
-        // Note: Scores, suggestions, etc. would need separate API calls
-        // For now, showing just the streaming response for low latency
-        scores: {},
-        suggestions: ['WebSocket mode - additional feedback available via standard mode'],
-        insights: ['Fast response via WebSocket streaming'],
-        direction: 'Continue practicing',
-        ideal_answer: ''
+        scores: {}, // Scores available in Standard mode
+        suggestions: [], // Suggestions available in Standard mode
+        insights: [], // Insights available in Standard mode
+        direction: '', // Direction available in Standard mode
+        ideal_answer: '', // Ideal answer available in Standard mode
+        websocket_mode: true // Flag to indicate this is a WebSocket response
       }
       
       sessionStore.addTurn(feedback)
@@ -293,14 +293,16 @@ export default {
           const userMessage = userInput.value || 'User response (audio only)'
           websocketService.sendMessage(userMessage, sessionStore.currentTurn)
           
-          // Still upload audio to blob storage via HTTP (for record keeping)
+          // Upload audio to blob storage via HTTP in background
           sessionService.submitTurn(
             sessionStore.sessionId,
             sessionStore.currentTurn,
             userMessage,
             audioBlob
           ).catch(error => {
-            console.error('Error uploading audio (non-blocking):', error)
+            console.error('Error uploading audio:', error)
+            // Notify user of upload failure (non-blocking for streaming)
+            alert('Warning: Audio upload failed. Your conversation will continue but audio may not be saved.')
           })
           
           userInput.value = ''

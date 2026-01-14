@@ -16,6 +16,7 @@ class WebSocketService {
     this.reconnectAttempts = 0
     this.maxReconnectAttempts = 3
     this.reconnectDelay = 1000 // ms
+    this.reconnecting = false // Flag to prevent multiple simultaneous reconnect attempts
   }
 
   /**
@@ -32,13 +33,16 @@ class WebSocketService {
 
       this.sessionId = sessionId
       
-      // Determine WebSocket URL
+      // Determine WebSocket URL from environment or default to current host
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-      const host = window.location.host.includes('localhost:5173') 
-        ? 'localhost:8000'  // Development
-        : window.location.host  // Production
       
-      const wsUrl = `${protocol}//${host}/ws/conversation/${sessionId}`
+      // Check for environment variable (Vite uses import.meta.env)
+      const wsHost = import.meta?.env?.VITE_WS_HOST || 
+                     (window.location.host.includes('localhost:5173') 
+                       ? 'localhost:8000'  // Development fallback
+                       : window.location.host)  // Production
+      
+      const wsUrl = `${protocol}//${wsHost}/ws/conversation/${sessionId}`
       
       this.ws = new WebSocket(wsUrl)
 
@@ -91,13 +95,20 @@ class WebSocketService {
    * Handle reconnection logic
    */
   handleReconnect() {
+    if (this.reconnecting) {
+      return // Prevent multiple simultaneous reconnection attempts
+    }
+    
     if (this.reconnectAttempts < this.maxReconnectAttempts && this.sessionId) {
+      this.reconnecting = true
       this.reconnectAttempts++
       console.log(`Attempting to reconnect (${this.reconnectAttempts}/${this.maxReconnectAttempts})...`)
       
       setTimeout(() => {
         this.connect(this.sessionId).catch(error => {
           console.error('Reconnection failed:', error)
+        }).finally(() => {
+          this.reconnecting = false
         })
       }, this.reconnectDelay * this.reconnectAttempts)
     }

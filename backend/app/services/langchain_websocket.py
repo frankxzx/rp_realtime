@@ -23,7 +23,15 @@ class LangChainWebSocketService:
         )
     
     def _build_system_message(self, scenario: ScenarioConfig) -> str:
-        """Build system prompt from scenario configuration"""
+        """
+        Build system prompt from scenario configuration
+        
+        Args:
+            scenario: ScenarioConfig with context, audience, purpose, etc.
+            
+        Returns:
+            Formatted system prompt string for the AI assistant
+        """
         prompt = f"""You are a conversation practice partner for role-playing scenarios.
 
 Scenario Context: {scenario.context}

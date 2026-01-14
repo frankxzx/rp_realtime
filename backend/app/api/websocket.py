@@ -42,6 +42,19 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 
+def is_websocket_connected(websocket: WebSocket) -> bool:
+    """
+    Check if WebSocket connection is still active
+    
+    Args:
+        websocket: WebSocket instance to check
+        
+    Returns:
+        True if connected, False otherwise
+    """
+    return websocket.client_state != WebSocketState.DISCONNECTED
+
+
 @router.websocket("/conversation/{session_id}")
 async def websocket_conversation(websocket: WebSocket, session_id: str):
     """
@@ -138,7 +151,7 @@ async def websocket_conversation(websocket: WebSocket, session_id: str):
                 break
             except json.JSONDecodeError:
                 # Only send error if connection is still active
-                if websocket.client_state != WebSocketState.DISCONNECTED:
+                if is_websocket_connected(websocket):
                     try:
                         await websocket.send_json({
                             "type": "error",
@@ -149,7 +162,7 @@ async def websocket_conversation(websocket: WebSocket, session_id: str):
             except Exception as e:
                 logger.error(f"Error processing message: {str(e)}")
                 # Only send error if connection is still active
-                if websocket.client_state != WebSocketState.DISCONNECTED:
+                if is_websocket_connected(websocket):
                     try:
                         await websocket.send_json({
                             "type": "error",

@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api import sessions
+from app.api import sessions, websocket
 from app.core.config import settings
 
 app = FastAPI(
@@ -20,6 +20,7 @@ app.add_middleware(
 
 # Include routers
 app.include_router(sessions.router)
+app.include_router(websocket.router)
 
 
 @app.get("/")

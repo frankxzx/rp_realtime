@@ -2,6 +2,17 @@
 
 A comprehensive role-playing conversation practice application with real-time AI feedback, built with Vue, FastAPI, LangChain, and Azure OpenAI Realtime API.
 
+## ✨ NEW: WebSocket Streaming Support
+
+**Low-latency real-time conversation with sub-3-second response times!**
+
+- 🚀 **WebSocket Mode**: Ultra-fast streaming responses via WebSocket connection
+- ⚡ **LangChain Integration**: Streaming Azure OpenAI responses using LangChain
+- 🔄 **Dual Mode**: Choose between Standard (full feedback) or WebSocket (speed-optimized)
+- 📡 **Connection Status**: Visual indicator showing WebSocket connection state
+
+See [WEBSOCKET_GUIDE.md](WEBSOCKET_GUIDE.md) for detailed implementation details.
+
 ## Features
 
 ### 🎯 Core Functionality
@@ -10,6 +21,7 @@ A comprehensive role-playing conversation practice application with real-time AI
 - **Audio Processing**: PCM chunks merged into MP3, uploaded to blob storage
 - **Visual Snapshots**: Front camera captures every 5 seconds
 - **Real-time Feedback**: Instant AI responses with multi-dimensional analysis
+- **⚡ WebSocket Streaming**: Low-latency real-time AI responses (under 3 seconds)
 
 ### 📊 Real-time Analysis
 - **Ideal Answers**: Generated from hardcoded Q&A data based on scenario
@@ -34,10 +46,13 @@ Frontend (Vue 3)
 ├── Push-to-Talk UI
 ├── Audio Recording (MediaRecorder API)
 ├── Camera Snapshots (getUserMedia API)
+├── WebSocket Client (Real-time Streaming)
 └── Real-time Feedback Display
 
 Backend (FastAPI)
 ├── Session Management
+├── WebSocket Endpoint (Low-latency Streaming)
+├── LangChain Streaming Service
 ├── Azure OpenAI Integration
 ├── LangChain Prompt Templates
 ├── Audio Processing (PCM → MP3)

@@ -13,6 +13,22 @@
       <div class="controls-section">
         <div class="turn-info">
           <h3>Turn {{ sessionStore.currentTurn + 1 }}</h3>
+          <div class="mode-selector">
+            <label>
+              <input type="radio" v-model="useWebSocket" :value="false" :disabled="sessionStore.isRecording" />
+              Standard Mode
+            </label>
+            <label>
+              <input type="radio" v-model="useWebSocket" :value="true" :disabled="sessionStore.isRecording" />
+              ⚡ WebSocket Mode (Low Latency)
+            </label>
+          </div>
+          <div v-if="useWebSocket && wsConnected" class="ws-status connected">
+            🟢 WebSocket Connected
+          </div>
+          <div v-else-if="useWebSocket && !wsConnected" class="ws-status disconnected">
+            🔴 WebSocket Disconnected
+          </div>
         </div>
 
         <div v-if="!sessionStore.isRecording" class="control-buttons">
@@ -50,11 +66,15 @@
       </div>
 
       <!-- Feedback Display -->
-      <div v-if="latestFeedback" class="feedback-section">
+      <div v-if="latestFeedback || streamingResponse" class="feedback-section">
         <h3>AI Response</h3>
-        <div class="ai-response">{{ latestFeedback.ai_response }}</div>
+        <div class="ai-response">
+          <span v-if="streamingResponse" class="streaming">{{ streamingResponse }}</span>
+          <span v-else-if="latestFeedback">{{ latestFeedback.ai_response }}</span>
+          <span v-if="isStreaming" class="cursor">▊</span>
+        </div>
 
-        <div class="feedback-grid">
+        <div v-if="latestFeedback" class="feedback-grid">
           <div class="feedback-card">
             <h4>💡 Ideal Answer</h4>
             <p>{{ latestFeedback.ideal_answer }}</p>
@@ -109,10 +129,11 @@
 </template>
 
 <script>
-import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useSessionStore } from '../stores/session'
 import { AudioRecorder, CameraCapture } from '../services/media'
 import { sessionService } from '../services/api'
+import { websocketService } from '../services/websocket'
 
 export default {
   name: 'ConversationPractice',
@@ -128,6 +149,12 @@ export default {
     const isProcessing = ref(false)
     const snapshotCount = ref(0)
     const latestFeedback = ref(null)
+    
+    // WebSocket specific state
+    const useWebSocket = ref(true) // Default to WebSocket mode for low latency
+    const wsConnected = ref(false)
+    const streamingResponse = ref('')
+    const isStreaming = ref(false)
 
     let recordingTimer = null
     let snapshotTimer = null
@@ -137,6 +164,74 @@ export default {
       const secs = seconds % 60
       return `${mins}:${secs.toString().padStart(2, '0')}`
     }
+
+    // WebSocket handlers
+    const handleStreamChunk = (chunk) => {
+      streamingResponse.value += chunk
+    }
+
+    const handleStreamComplete = (fullResponse, turnNumber) => {
+      isStreaming.value = false
+      
+      // Create feedback object with the streaming response
+      const feedback = {
+        ai_response: fullResponse,
+        turn_number: turnNumber,
+        user_input: userInput.value || 'User response (audio only)',
+        // Note: Scores, suggestions, etc. would need separate API calls
+        // For now, showing just the streaming response for low latency
+        scores: {},
+        suggestions: ['WebSocket mode - additional feedback available via standard mode'],
+        insights: ['Fast response via WebSocket streaming'],
+        direction: 'Continue practicing',
+        ideal_answer: ''
+      }
+      
+      sessionStore.addTurn(feedback)
+      latestFeedback.value = feedback
+      streamingResponse.value = ''
+    }
+
+    const handleStreamError = (errorMessage) => {
+      isStreaming.value = false
+      console.error('WebSocket stream error:', errorMessage)
+      alert(`Streaming error: ${errorMessage}`)
+      streamingResponse.value = ''
+    }
+
+    const handleStreamStart = (turnNumber) => {
+      isStreaming.value = true
+      streamingResponse.value = ''
+    }
+
+    // Setup WebSocket connection when mode is enabled
+    const setupWebSocket = async () => {
+      if (useWebSocket.value && sessionStore.sessionId) {
+        try {
+          await websocketService.connect(sessionStore.sessionId)
+          wsConnected.value = true
+          
+          // Register handlers
+          websocketService.on('chunk', handleStreamChunk)
+          websocketService.on('complete', handleStreamComplete)
+          websocketService.on('error', handleStreamError)
+          websocketService.on('start', handleStreamStart)
+        } catch (error) {
+          console.error('Failed to connect WebSocket:', error)
+          wsConnected.value = false
+        }
+      }
+    }
+
+    // Watch for WebSocket mode changes
+    watch(useWebSocket, async (newValue) => {
+      if (newValue) {
+        await setupWebSocket()
+      } else {
+        websocketService.disconnect()
+        wsConnected.value = false
+      }
+    })
 
     const startRecording = async () => {
       const success = await audioRecorder.startRecording()
@@ -192,17 +287,36 @@ export default {
           throw new Error('Failed to get recording')
         }
 
-        // Convert to MP3 (in production, you might want to do this server-side)
-        const feedback = await sessionService.submitTurn(
-          sessionStore.sessionId,
-          sessionStore.currentTurn,
-          userInput.value || 'User response (audio only)',
-          audioBlob
-        )
+        // Use WebSocket or standard HTTP based on mode
+        if (useWebSocket.value && wsConnected.value) {
+          // Send via WebSocket for low latency streaming
+          const userMessage = userInput.value || 'User response (audio only)'
+          websocketService.sendMessage(userMessage, sessionStore.currentTurn)
+          
+          // Still upload audio to blob storage via HTTP (for record keeping)
+          sessionService.submitTurn(
+            sessionStore.sessionId,
+            sessionStore.currentTurn,
+            userMessage,
+            audioBlob
+          ).catch(error => {
+            console.error('Error uploading audio (non-blocking):', error)
+          })
+          
+          userInput.value = ''
+        } else {
+          // Standard HTTP mode with full feedback
+          const feedback = await sessionService.submitTurn(
+            sessionStore.sessionId,
+            sessionStore.currentTurn,
+            userInput.value || 'User response (audio only)',
+            audioBlob
+          )
 
-        sessionStore.addTurn(feedback)
-        latestFeedback.value = feedback
-        userInput.value = ''
+          sessionStore.addTurn(feedback)
+          latestFeedback.value = feedback
+          userInput.value = ''
+        }
       } catch (error) {
         console.error('Error submitting turn:', error)
         alert('Failed to submit recording. Please try again.')
@@ -229,6 +343,11 @@ export default {
       if (videoElement.value) {
         await cameraCapture.startCamera(videoElement.value)
       }
+      
+      // Setup WebSocket if enabled
+      if (useWebSocket.value) {
+        await setupWebSocket()
+      }
     })
 
     onUnmounted(() => {
@@ -236,6 +355,9 @@ export default {
       if (snapshotTimer) clearInterval(snapshotTimer)
       audioRecorder.cleanup()
       cameraCapture.stopCamera()
+      
+      // Cleanup WebSocket
+      websocketService.disconnect()
     })
 
     return {
@@ -246,6 +368,10 @@ export default {
       isProcessing,
       snapshotCount,
       latestFeedback,
+      useWebSocket,
+      wsConnected,
+      streamingResponse,
+      isStreaming,
       formatTime,
       startRecording,
       sendRecording,
@@ -301,6 +427,69 @@ export default {
 .turn-info h3 {
   margin: 0 0 15px 0;
   color: #2c3e50;
+}
+
+.mode-selector {
+  margin: 15px 0;
+  display: flex;
+  gap: 20px;
+}
+
+.mode-selector label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  color: #495057;
+}
+
+.mode-selector input[type="radio"] {
+  cursor: pointer;
+}
+
+.mode-selector input[type="radio"]:disabled {
+  cursor: not-allowed;
+}
+
+.ws-status {
+  display: inline-block;
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  margin-top: 10px;
+}
+
+.ws-status.connected {
+  background-color: #d4edda;
+  color: #155724;
+  border: 1px solid #c3e6cb;
+}
+
+.ws-status.disconnected {
+  background-color: #f8d7da;
+  color: #721c24;
+  border: 1px solid #f5c6cb;
+}
+
+.ai-response .streaming {
+  color: #0056b3;
+}
+
+.ai-response .cursor {
+  animation: blink 1s infinite;
+  color: #007bff;
+  font-weight: bold;
+}
+
+@keyframes blink {
+  0%, 49% {
+    opacity: 1;
+  }
+  50%, 100% {
+    opacity: 0;
+  }
 }
 
 .control-buttons {

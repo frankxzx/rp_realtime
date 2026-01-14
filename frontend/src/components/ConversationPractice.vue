@@ -29,6 +29,9 @@
           <div v-else-if="useWebSocket && !wsConnected" class="ws-status disconnected">
             🔴 WebSocket Disconnected
           </div>
+          <div v-if="errorMessage" class="error-notification">
+            ⚠️ {{ errorMessage }}
+          </div>
         </div>
 
         <div v-if="!sessionStore.isRecording" class="control-buttons">
@@ -155,6 +158,7 @@ export default {
     const wsConnected = ref(false)
     const streamingResponse = ref('')
     const isStreaming = ref(false)
+    const errorMessage = ref('')
 
     let recordingTimer = null
     let snapshotTimer = null
@@ -195,8 +199,12 @@ export default {
     const handleStreamError = (errorMessage) => {
       isStreaming.value = false
       console.error('WebSocket stream error:', errorMessage)
-      alert(`Streaming error: ${errorMessage}`)
+      errorMessage.value = `Streaming error: ${errorMessage}`
       streamingResponse.value = ''
+      // Clear error after 5 seconds
+      setTimeout(() => {
+        errorMessage.value = ''
+      }, 5000)
     }
 
     const handleStreamStart = (turnNumber) => {
@@ -301,8 +309,10 @@ export default {
             audioBlob
           ).catch(error => {
             console.error('Error uploading audio:', error)
-            // Notify user of upload failure (non-blocking for streaming)
-            alert('Warning: Audio upload failed. Your conversation will continue but audio may not be saved.')
+            errorMessage.value = 'Warning: Audio upload failed. Your conversation will continue but audio may not be saved.'
+            setTimeout(() => {
+              errorMessage.value = ''
+            }, 5000)
           })
           
           userInput.value = ''
@@ -374,6 +384,7 @@ export default {
       wsConnected,
       streamingResponse,
       isStreaming,
+      errorMessage,
       formatTime,
       startRecording,
       sendRecording,
@@ -473,6 +484,30 @@ export default {
   background-color: #f8d7da;
   color: #721c24;
   border: 1px solid #f5c6cb;
+}
+
+.error-notification {
+  display: inline-block;
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  margin-top: 10px;
+  background-color: #fff3cd;
+  color: #856404;
+  border: 1px solid #ffeaa7;
+  animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .ai-response .streaming {

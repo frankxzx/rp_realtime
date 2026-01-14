@@ -2,6 +2,7 @@
 WebSocket endpoint for real-time conversation with low latency
 """
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from starlette.websockets import WebSocketState
 from app.services.langchain_websocket import langchain_websocket_service
 from app.services.session_manager import session_manager
 from app.models.schemas import ScenarioConfig
@@ -137,19 +138,25 @@ async def websocket_conversation(websocket: WebSocket, session_id: str):
                 break
             except json.JSONDecodeError:
                 # Only send error if connection is still active
-                if not websocket.client_state.disconnected:
-                    await websocket.send_json({
-                        "type": "error",
-                        "message": "Invalid JSON format"
-                    })
+                if websocket.client_state != WebSocketState.DISCONNECTED:
+                    try:
+                        await websocket.send_json({
+                            "type": "error",
+                            "message": "Invalid JSON format"
+                        })
+                    except Exception:
+                        pass  # Connection already closed
             except Exception as e:
                 logger.error(f"Error processing message: {str(e)}")
                 # Only send error if connection is still active
-                if not websocket.client_state.disconnected:
-                    await websocket.send_json({
-                        "type": "error",
-                        "message": f"Internal error: {str(e)}"
-                    })
+                if websocket.client_state != WebSocketState.DISCONNECTED:
+                    try:
+                        await websocket.send_json({
+                            "type": "error",
+                            "message": f"Internal error: {str(e)}"
+                        })
+                    except Exception:
+                        pass  # Connection already closed
                 
     except Exception as e:
         logger.error(f"WebSocket error: {str(e)}")
